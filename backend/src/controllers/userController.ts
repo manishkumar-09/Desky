@@ -1,10 +1,13 @@
 import { Request, Response } from "express";
 import {
+  LoginInput,
+  loginSchema,
   registerSchema,
   RegisterUserInput,
 } from "../validations/authValidation";
 import { prisma } from "../lib/prismaClient";
-import { hashPassword } from "../utils/hashPassword";
+import { ComparePassword, hashPassword } from "../utils/hashPassword";
+import { TokenGenerator } from "../middlewares/token";
 
 const userRegistration = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -13,7 +16,6 @@ const userRegistration = async (req: Request, res: Response): Promise<any> => {
     const validation = registerSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({
-        // ✅ Use 400 for validation errors
         message: "Invalid input",
         errors: validation.error.errors,
       });
@@ -50,7 +52,51 @@ const userRegistration = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
-const LoginUser = async (req: Request, res: Response) => {};
+const LoginUser = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const validation = loginSchema.safeParse(req.body);
+    if (validation.success !== true) {
+      return res.status(400).json({
+        success: false,
+        message: "User does not exist OR incorrect password",
+        error: validation.error.errors,
+      });
+    }
+    const { email, password }: LoginInput = validation.data;
+
+    const userExist = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+    if (!userExist) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+
+    const isValidPassword = await ComparePassword(password, userExist.password);
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password",
+      });
+    }
+    const token = TokenGenerator({ userId: userExist.id });
+    return res.status(200).json({
+      success: true,
+      message: "Login Successfull",
+      token,
+    });
+  } catch (err) {
+    console.log("Error :", err);
+    return res.status(500).json({
+      message: "Something went wrong",
+      err,
+    });
+  }
+};
 
 const GetMe = async (req: Request, res: Response) => {};
 
