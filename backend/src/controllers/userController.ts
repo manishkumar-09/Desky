@@ -7,7 +7,12 @@ import {
 } from "../validations/authValidation";
 import { prisma } from "../lib/prismaClient";
 import { ComparePassword, hashPassword } from "../utils/hashPassword";
-import { TokenGenerator } from "../middlewares/token";
+import {
+  AccessTokenGenerator,
+  TokenGenerator,
+  VerifyRefreshToken,
+} from "../utils/token";
+import { JwtPayload } from "jsonwebtoken";
 
 const userRegistration = async (req: Request, res: Response): Promise<any> => {
   try {
@@ -39,7 +44,7 @@ const userRegistration = async (req: Request, res: Response): Promise<any> => {
         password: hashedPassword,
       },
     });
-    return res.status(200).json({
+    return res.status(201).json({
       message: "Registraion Successfull",
       user,
     });
@@ -83,11 +88,22 @@ const LoginUser = async (req: Request, res: Response): Promise<any> => {
         message: "Invalid email or password",
       });
     }
-    const token = TokenGenerator({ userId: userExist.id });
+    const { accessToken, refreshToken } = TokenGenerator({
+      userId: userExist.id,
+    });
+
+    // storing refresh token in cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
     return res.status(200).json({
       success: true,
       message: "Login Successfull",
-      token,
+      accessToken,
+      refreshToken,
     });
   } catch (err) {
     console.log("Error :", err);
@@ -98,6 +114,57 @@ const LoginUser = async (req: Request, res: Response): Promise<any> => {
   }
 };
 
+const getNewAccessToken = async (req: Request, res: Response): Promise<any> => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: No refresh token provided",
+      });
+    }
+
+    // ✅ Verify Refresh Token
+    const decoded = VerifyRefreshToken(refreshToken) as {
+      userId: string;
+    } | null;
+    if (!decoded || !decoded.userId) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Invalid refresh token" });
+    }
+
+    // ✅ Generate a new access token
+    const accessToken = AccessTokenGenerator(decoded.userId);
+
+    return res.status(200).json({ success: true, accessToken });
+  } catch (err) {
+    console.error("Refresh Token Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
+  }
+};
+
+const LogoutUser = async (req: Request, res: Response): Promise<any> => {
+  try {
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "none",
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Logout Successful" });
+  } catch (err) {
+    console.error("Logout Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Something went wrong" });
+  }
+};
 const GetMe = async (req: Request, res: Response) => {};
 
-export { userRegistration, LoginUser, GetMe };
+export { userRegistration, LoginUser, GetMe, LogoutUser, getNewAccessToken };
