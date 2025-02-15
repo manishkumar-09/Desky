@@ -1,17 +1,22 @@
 import { Router, Response, Request } from "express";
-import { LoginUser, userRegistration } from "../controllers/userController";
-// import { Authentication } from "../middlewares/auth";
+import {
+  getNewAccessToken,
+  LoginUser,
+  LogoutUser,
+  userRegistration,
+} from "../controllers/userController";
+import { Authentication } from "../middlewares/auth";
 const userRouter = Router();
 
 userRouter.post("/auth/registration", userRegistration);
 userRouter.post("/auth/login", LoginUser);
-userRouter.post(
+userRouter.get(
   "/auth/check",
-  //   Authentication,
+  Authentication,
   async (req: Request, res: Response) => {
-    res.send("check");
+    res.json({ Id: req.userId });
   }
 );
-// userRouter.get("/auth/getme"); //add middleware which authenticate user before getting user information
-
+userRouter.post("/auth/refresh", getNewAccessToken);
+userRouter.post("/auth/logout", LogoutUser);
 export { userRouter };
